@@ -16,10 +16,8 @@ def load_data():
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # 如果是最舊的陣列格式，升級成字典
                 if isinstance(data, list):
                     return {"personal": data, "agent": [], "todo": []}
-                # 如果是上一版字典格式，補上 todo 欄位
                 if "todo" not in data:
                     data["todo"] = []
                 return data
@@ -122,7 +120,9 @@ with st.expander("➕ 新增商品 (自用)", expanded=False):
 
 if st.session_state.data["personal"]:
     df = pd.DataFrame(st.session_state.data["personal"])
-    df["price_twd"] = (df["price_jpy"] * rate).astype(int)
+    
+    # 【修復在這裡】使用 fillna(0) 確保空值會被當成 0 處理，不會報錯
+    df["price_twd"] = (df["price_jpy"].fillna(0) * rate).astype(int)
     
     column_config = {
         "bought": st.column_config.CheckboxColumn("已買?", width="small"),
@@ -133,13 +133,14 @@ if st.session_state.data["personal"]:
 
     edited_df = st.data_editor(df, column_config=column_config, use_container_width=True, hide_index=True, num_rows="dynamic", key="editor_personal")
 
-    current_data = edited_df[["name", "price_jpy", "bought"]].to_dict("records")
+    # 一樣要處理存檔時可能產生的空值
+    current_data = edited_df[["name", "price_jpy", "bought"]].fillna({"price_jpy": 0, "name": "未命名"}).to_dict("records")
     if current_data != st.session_state.data["personal"]:
         st.session_state.data["personal"] = current_data
         save_data(st.session_state.data)
         st.rerun()
         
-    total_jpy = df[~df["bought"]]["price_jpy"].sum()
+    total_jpy = df[~df["bought"]]["price_jpy"].fillna(0).sum()
     total_twd = int(total_jpy * rate)
     st.metric("💰 自用小計", f"NT$ {total_twd:,}", f"¥ {total_jpy:,}")
 else:
@@ -167,7 +168,9 @@ with st.expander("➕ 新增代購商品", expanded=False):
 
 if st.session_state.data["agent"]:
     df_agent = pd.DataFrame(st.session_state.data["agent"])
-    df_agent["price_twd"] = (df_agent["price_jpy"] * rate).astype(int)
+    
+    # 【修復在這裡】一樣加上 fillna(0)
+    df_agent["price_twd"] = (df_agent["price_jpy"].fillna(0) * rate).astype(int)
     
     column_config_agent = {
         "bought": st.column_config.CheckboxColumn("已買?", width="small"),
@@ -179,13 +182,13 @@ if st.session_state.data["agent"]:
 
     edited_df_agent = st.data_editor(df_agent, column_config=column_config_agent, use_container_width=True, hide_index=True, num_rows="dynamic", key="editor_agent")
 
-    current_agent_data = edited_df_agent[["client", "name", "price_jpy", "bought"]].to_dict("records")
+    current_agent_data = edited_df_agent[["client", "name", "price_jpy", "bought"]].fillna({"price_jpy": 0, "name": "未命名", "client": "未標記"}).to_dict("records")
     if current_agent_data != st.session_state.data["agent"]:
         st.session_state.data["agent"] = current_agent_data
         save_data(st.session_state.data)
         st.rerun()
 
-    total_agent_jpy = df_agent[~df_agent["bought"]]["price_jpy"].sum()
+    total_agent_jpy = df_agent[~df_agent["bought"]]["price_jpy"].fillna(0).sum()
     total_agent_twd = int(total_agent_jpy * rate)
     st.metric("💸 代購墊付小計", f"NT$ {total_agent_twd:,}", f"¥ {total_agent_jpy:,}")
 else:
@@ -195,9 +198,9 @@ else:
 st.markdown("---")
 all_jpy = 0
 if st.session_state.data["personal"]:
-    all_jpy += pd.DataFrame(st.session_state.data["personal"]).query("bought == False")["price_jpy"].sum()
+    all_jpy += pd.DataFrame(st.session_state.data["personal"]).query("bought == False")["price_jpy"].fillna(0).sum()
 if st.session_state.data["agent"]:
-    all_jpy += pd.DataFrame(st.session_state.data["agent"]).query("bought == False")["price_jpy"].sum()
+    all_jpy += pd.DataFrame(st.session_state.data["agent"]).query("bought == False")["price_jpy"].fillna(0).sum()
 
 st.subheader("👜 總結帳預估")
-st.caption(f"全部未購買的總花費 (含代購): **¥ {all_jpy:,}** (約 NT$ {int(all_jpy*rate):,})")
+st.caption(f"全部未購買的總花費 (含代購): **¥ {int(all_jpy):,}** (約 NT$ {int(all_jpy*rate):,})")
